@@ -86,7 +86,7 @@ if (optional_param('add', false, PARAM_BOOL) && confirm_sesskey()) {
             // Make sure that the user is enroled in the course.
             if (!has_capability('moodle/course:view', $context, $adduser)) {
                 $user = $DB->get_record('user', array('id' => $adduser));
-                if (!enrol_try_internal_enrol($course->id, $user->id)) {
+                if (!enrol_try_internal_enrol($course->id, $user->id, 5)) {
                     $errors[] = get_string('error:enrolmentfailed', 'facetoface', fullname($user));
                     $errors[] = get_string('error:addattendee', 'facetoface', fullname($user));
                     continue; // Don't sign the user up.

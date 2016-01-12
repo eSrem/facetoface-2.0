@@ -194,4 +194,14 @@ $capabilities = array(
             'manager' => CAP_ALLOW
         ),
     ),
+
+    // Ability to approve a user's request
+    'mod/facetoface:approveuser' => array(
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_USER,
+        'archetypes' => array(
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW
+        ),
+    ),
 );

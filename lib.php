@@ -37,6 +37,8 @@ require_once($CFG->dirroot . '/user/selector/lib.php');
 if (file_exists($CFG->libdir . '/completionlib.php')) {
     require_once($CFG->libdir . '/completionlib.php');
 }
+include_once($CFG->dirroot . "/enrol/locallib.php");
+include_once($CFG->dirroot . "/enrol/manual/lib.php");
 
 /*
  * Definitions for setting notification types.
@@ -58,7 +60,7 @@ define('MDL_F2F_CANCEL_TEXT', 10);    // Send just a plan email 8+2.
 define('MDL_F2F_CANCEL_ICAL', 9);     // Send just a combined text/ical message 8+1.
 
 // Name of the custom field where the manager's email address is stored.
-define('MDL_MANAGERSEMAIL_FIELD', 'managersemail');
+define('MDL_MANAGERSEMAIL_FIELD', 'managermail');
 
 // Custom field related constants.
 define('CUSTOMFIELD_DELIMITER', '##SEPARATOR##');
@@ -67,7 +69,7 @@ define('CUSTOMFIELD_TYPE_SELECT',      1);
 define('CUSTOMFIELD_TYPE_MULTISELECT', 2);
 
 // Calendar-related constants.
-define('CALENDAR_MAX_NAME_LENGTH', 15);
+define('CALENDAR_MAX_NAME_LENGTH', 120);
 define('F2F_CAL_NONE',   0);
 define('F2F_CAL_COURSE', 1);
 define('F2F_CAL_SITE',   2);
@@ -530,9 +532,6 @@ function facetoface_update_calendar_entries($session, $facetoface=null) {
 
         // Get ALL enrolled/booked users.
         $users = facetoface_get_attendees($session->id);
-        if (!in_array($USER->id, $users)) {
-            facetoface_add_session_to_calendar($session, $facetoface, 'user', $USER->id, 'session');
-        }
 
         foreach ($users as $user) {
             $eventtype = $user->statuscode == MDL_F2F_STATUS_BOOKED ? 'booking' : 'session';
@@ -783,7 +782,7 @@ function facetoface_email_substitutions($msg, $facetofacename, $reminderperiod, 
     $msg = str_replace(get_string('placeholder:reminderperiod', 'facetoface'), $reminderperiod, $msg);
 
     // Replace more meta data.
-    $msg = str_replace(get_string('placeholder:attendeeslink', 'facetoface'), $CFG->wwwroot . '/mod/facetoface/attendees.php?s=' . $data->id, $msg);
+    $msg = str_replace(get_string('placeholder:attendeeslink', 'facetoface'), $CFG->wwwroot . '/mod/facetoface/approve.php?s=' . $data->id, $msg);
 
     // Custom session fields (they look like "session:shortname" in the templates).
     $customfields = facetoface_get_session_customfields();
@@ -898,11 +897,11 @@ function facetoface_cron() {
             continue;
         }
 
-        $postsubject = facetoface_email_substitutions($postsubject, $signupdata->facetofacename, $signupdata->reminderperiod,
+        $postsubject = facetoface_email_substitutions($postsubject, $signupdata->facetofaceshortname, $signupdata->reminderperiod,
                                                       $user, $signupdata, $signupdata->sessionid);
-        $posttext = facetoface_email_substitutions($posttext, $signupdata->facetofacename, $signupdata->reminderperiod,
+        $posttext = facetoface_email_substitutions($posttext, $signupdata->facetofaceshortname, $signupdata->reminderperiod,
                                                    $user, $signupdata, $signupdata->sessionid);
-        $posttextmgrheading = facetoface_email_substitutions($posttextmgrheading, $signupdata->facetofacename, $signupdata->reminderperiod,
+        $posttextmgrheading = facetoface_email_substitutions($posttextmgrheading, $signupdata->facetofaceshortname, $signupdata->reminderperiod,
                                                              $user, $signupdata, $signupdata->sessionid);
 
         $posthtml = ''; // FIXME.
@@ -1726,7 +1725,7 @@ function facetoface_user_signup($session, $facetoface, $course, $discountcode,
                                 $notificationtype, $statuscode, $userid = false,
                                 $notifyuser = true) {
 
-    global $CFG, $DB;
+    global $CFG, $DB, $PAGE;
 
     // Get user ID.
     if (!$userid) {
@@ -1736,6 +1735,20 @@ function facetoface_user_signup($session, $facetoface, $course, $discountcode,
 
     $return = false;
     $timenow = time();
+
+    // Check to see if user is already enrolled, if not. Enrol user
+    $ehelper = new course_enrolment_manager($PAGE, $course);
+    $enrolinstances = $ehelper->get_enrolment_instances();
+    $enrolments = $ehelper->get_user_enrolments($userid);
+    if(empty($enrolments)) {
+        foreach($enrolinstances as $instance) {
+            if($instance->enrol == 'manual') {
+                $emp = new enrol_manual_plugin();
+                $emp->enrol_user($instance, $userid, 5, $timenow);
+                break;
+            }
+        }
+    }
 
     // Check to see if a signup already exists.
     if ($existingsignup = $DB->get_record('facetoface_signups', array('sessionid' => $session->id, 'userid' => $userid))) {
@@ -1886,7 +1899,7 @@ function facetoface_send_request_notice($facetoface, $session, $userid) {
 
     $postsubject = facetoface_email_substitutions(
             $facetoface->requestsubject,
-            $facetoface->name,
+            $facetoface->shortname,
             $facetoface->reminderperiod,
             $user,
             $session,
@@ -1895,7 +1908,7 @@ function facetoface_send_request_notice($facetoface, $session, $userid) {
 
     $posttext = facetoface_email_substitutions(
             $facetoface->requestmessage,
-            $facetoface->name,
+            $facetoface->shortname,
             $facetoface->reminderperiod,
             $user,
             $session,
@@ -1904,7 +1917,7 @@ function facetoface_send_request_notice($facetoface, $session, $userid) {
 
     $posttextmgrheading = facetoface_email_substitutions(
             $facetoface->requestinstrmngr,
-            $facetoface->name,
+            $facetoface->shortname,
             $facetoface->reminderperiod,
             $user,
             $session,
@@ -2070,9 +2083,9 @@ function facetoface_send_notice($postsubject, $posttext, $posttextmgrheading,
                 $session->sessiondates = array($sessiondate); // One day at a time.
 
                 $filename = facetoface_get_ical_attachment($notificationtype, $facetoface, $session, $user);
-                $subject = facetoface_email_substitutions($postsubject, $facetoface->name, $facetoface->reminderperiod,
+                $subject = facetoface_email_substitutions($postsubject, $facetoface->shortname, $facetoface->reminderperiod,
                                                           $user, $session, $session->id);
-                $body = facetoface_email_substitutions($posttext, $facetoface->name, $facetoface->reminderperiod,
+                $body = facetoface_email_substitutions($posttext, $facetoface->shortname, $facetoface->reminderperiod,
                                                        $user, $session, $session->id);
                 $htmlbody = ''; // TODO.
                 $icalattachments[] = array('filename' => $filename, 'subject' => $subject,
@@ -2083,9 +2096,9 @@ function facetoface_send_notice($postsubject, $posttext, $posttextmgrheading,
             $session->sessiondates = $sessiondates;
         } else {
             $filename = facetoface_get_ical_attachment($notificationtype, $facetoface, $session, $user);
-            $subject = facetoface_email_substitutions($postsubject, $facetoface->name, $facetoface->reminderperiod,
+            $subject = facetoface_email_substitutions($postsubject, $facetoface->shortname, $facetoface->reminderperiod,
                                                       $user, $session, $session->id);
-            $body = facetoface_email_substitutions($posttext, $facetoface->name, $facetoface->reminderperiod,
+            $body = facetoface_email_substitutions($posttext, $facetoface->shortname, $facetoface->reminderperiod,
                                                    $user, $session, $session->id);
             $htmlbody = ''; // FIXME.
             $icalattachments[] = array('filename' => $filename, 'subject' => $subject,
@@ -2094,12 +2107,12 @@ function facetoface_send_notice($postsubject, $posttext, $posttextmgrheading,
     }
 
     // Fill-in the email placeholders.
-    $postsubject = facetoface_email_substitutions($postsubject, $facetoface->name, $facetoface->reminderperiod,
+    $postsubject = facetoface_email_substitutions($postsubject, $facetoface->shortname, $facetoface->reminderperiod,
                                                   $user, $session, $session->id);
-    $posttext = facetoface_email_substitutions($posttext, $facetoface->name, $facetoface->reminderperiod,
+    $posttext = facetoface_email_substitutions($posttext, $facetoface->shortname, $facetoface->reminderperiod,
                                                $user, $session, $session->id);
 
-    $posttextmgrheading = facetoface_email_substitutions($posttextmgrheading, $facetoface->name, $facetoface->reminderperiod,
+    $posttextmgrheading = facetoface_email_substitutions($posttextmgrheading, $facetoface->shortname, $facetoface->reminderperiod,
                                                          $user, $session, $session->id);
 
     $posthtml = ''; // FIXME.
@@ -3147,7 +3160,7 @@ function facetoface_add_session_to_calendar($session, $facetoface, $calendartype
     $result = true;
     foreach ($session->sessiondates as $date) {
         $newevent = new stdClass();
-        $newevent->name = $shortname;
+        $newevent->name = $facetoface->shortname;
         $newevent->description = $description;
         $newevent->format = FORMAT_HTML;
         $newevent->courseid = $courseid;

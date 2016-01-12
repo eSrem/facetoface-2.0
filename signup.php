@@ -30,6 +30,8 @@
 
 require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
 require_once('lib.php');
+require_login();
+
 
 $s = required_param('s', PARAM_INT); // Facetoface session ID.
 $backtoallsessions = optional_param('backtoallsessions', 0, PARAM_INT);
@@ -47,7 +49,7 @@ if (!$cm = get_coursemodule_from_instance("facetoface", $facetoface->id, $course
     print_error('error:incorrectcoursemoduleid', 'facetoface');
 }
 
-require_course_login($course, true, $cm);
+
 $context = context_course::instance($course->id);
 $contextmodule = context_module::instance($cm->id);
 require_capability('mod/facetoface:view', $context);
@@ -128,7 +130,7 @@ if ($fromform = $mform->get_data()) { // Form submitted.
         print_error('sessionisfull', 'facetoface', $returnurl);
     } else if (facetoface_get_user_submissions($facetoface->id, $USER->id)) {
         print_error('alreadysignedup', 'facetoface', $returnurl);
-    } else if (facetoface_manager_needed($facetoface) && !facetoface_get_manageremail($USER->id)) {
+    } else if (facetoface_manager_needed($facetoface) && !facetoface_get_manageremail($USER->id)) { 
         print_error('error:manageremailaddressmissing', 'facetoface', $returnurl);
     } else if ($submissionid = facetoface_user_signup($session, $facetoface, $course, $fromform->discountcode, $fromform->notificationtype, $statuscode)) {
 
