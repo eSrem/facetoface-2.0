@@ -2074,11 +2074,16 @@ function facetoface_send_notice($postsubject, $posttext, $posttextmgrheading,
     // Do iCal attachement stuff.
     $icalattachments = array();
     if ($notificationtype & MDL_F2F_ICAL) {
-        if (get_config(null, 'facetoface_oneemailperday')) {
-
-            // Keep track of all sessiondates.
+        if(!$CFG->facetoface_oneemailperday) {
+            $filename = facetoface_get_ical_attachment($notificationtype, $facetoface, $session, $user);
+            $subject = facetoface_email_substitutions($postsubject, $facetoface->shortname, $facetoface->reminderperiod,
+                                                      $user, $session, $session->id);
+            $body = facetoface_email_substitutions($posttext, $facetoface->shortname, $facetoface->reminderperiod,
+                                                   $user, $session, $session->id);
+            $htmlbody = ''; // TODO.
+            $icalattachments[] = array('filename' => $filename, 'subject' => $subject, 'body' => $body, 'htmlbody' => $htmlbody);
+        } else {
             $sessiondates = $session->sessiondates;
-
             foreach ($sessiondates as $sessiondate) {
                 $session->sessiondates = array($sessiondate); // One day at a time.
 
@@ -2088,22 +2093,13 @@ function facetoface_send_notice($postsubject, $posttext, $posttextmgrheading,
                 $body = facetoface_email_substitutions($posttext, $facetoface->shortname, $facetoface->reminderperiod,
                                                        $user, $session, $session->id);
                 $htmlbody = ''; // TODO.
-                $icalattachments[] = array('filename' => $filename, 'subject' => $subject,
-                                           'body' => $body, 'htmlbody' => $htmlbody);
-            }
 
+                $icalattachments[] = array('filename' => $filename, 'subject' => $subject, 'body' => $body, 'htmlbody' => $htmlbody);
+            }
             // Restore session dates.
             $session->sessiondates = $sessiondates;
-        } else {
-            $filename = facetoface_get_ical_attachment($notificationtype, $facetoface, $session, $user);
-            $subject = facetoface_email_substitutions($postsubject, $facetoface->shortname, $facetoface->reminderperiod,
-                                                      $user, $session, $session->id);
-            $body = facetoface_email_substitutions($posttext, $facetoface->shortname, $facetoface->reminderperiod,
-                                                   $user, $session, $session->id);
-            $htmlbody = ''; // FIXME.
-            $icalattachments[] = array('filename' => $filename, 'subject' => $subject,
-                                       'body' => $body, 'htmlbody' => $htmlbody);
         }
+
     }
 
     // Fill-in the email placeholders.
@@ -2136,10 +2132,9 @@ function facetoface_send_notice($postsubject, $posttext, $posttextmgrheading,
             }
             unlink($CFG->dataroot . '/' . $attachment['filename']);
         }
-    }
-
-    // Send plain text email.
-    if ($notificationtype & MDL_F2F_TEXT) {
+    } 
+    // Send plain text email
+    if ($notificationtype & MDL_F2F_TEXT) { 
         if (!email_to_user($user, $from, $postsubject, $posttext, $posthtml)) {
             return 'error:cannotsendconfirmationuser';
         }
@@ -2700,7 +2695,6 @@ function facetoface_get_ical_attachment($method, $facetoface, $session, $user) {
     // First, generate all the VEVENT blocks.
     $VEVENTS = '';
     foreach ($session->sessiondates as $date) {
-
         /*
          * Date that this representation of the calendar information was created -
          * we use the time the session was created
